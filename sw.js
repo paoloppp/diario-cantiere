@@ -1,5 +1,5 @@
 // Diario Cantiere — funzionamento offline
-const CACHE='diario-v1';
+const CACHE='diario-v3';
 const SHELL=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'];
 self.addEventListener('install',e=>{
@@ -14,7 +14,7 @@ self.addEventListener('fetch',e=>{
   const url=new URL(req.url);
   // pagina: prima la rete (per gli aggiornamenti), se non c'è campo la copia salvata
   if(req.mode==='navigate'){
-    e.respondWith(fetch(req).then(r=>{ const c=r.clone(); caches.open(CACHE).then(x=>x.put('./index.html',c)); return r; })
+    e.respondWith(fetch(req,{cache:'no-store'}).then(r=>{ const c=r.clone(); caches.open(CACHE).then(x=>x.put('./index.html',c)); return r; })
       .catch(()=>caches.match('./index.html')));
     return;
   }
