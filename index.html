@@ -560,7 +560,7 @@ function renderHome(){
         <button class="btn-hero" id="newBtn" data-act="new">${I.plus} Crea il primo cantiere</button>
         <button class="btn-hero btn-word" data-act="word">${I.doc} Crea da file Word</button>
       </div>
-      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 5</div>`;
+      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 6</div>`;
     document.getElementById('impBtn').onclick=importBackup;
     return;
   }
@@ -594,7 +594,7 @@ function renderHome(){
     </div>
     <div class="swipe-hint">Scorri un cantiere verso sinistra per modifica, duplica, Word ed elimina</div>
     ${cards}
-    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 5</div>
+    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 6</div>
     <button class="fab" id="newBtn" data-act="new">${I.plus} Cantiere</button>`;
   setupSwipe();
   document.getElementById('expBtn').onclick=exportBackup;
@@ -1812,6 +1812,9 @@ async function docxRead(file){
         if(ln==='p'){ const t=runText(c); if(t) items.push({k:'p',text:t});
           if(isDoc) blips(c).forEach(id=>{ const tg=rels[id]; if(tg&&!/^https?:/.test(tg)) items.push({k:'img',path:'word/'+tg.replace(/^\.?\//,'')}); }); }
         else if(ln==='tbl'){ for(const tr of c.childNodes){ if(tr.localName!=='tr') continue;
+            const tcs=[...tr.childNodes].filter(x=>x.localName==='tc');
+            const nP=tcs.reduce((n,tc)=>n+[...tc.getElementsByTagNameNS('*','p')].filter(p=>runText(p)).length,0);
+            if(isDoc && (nP>4 || tcs.some(tc=>blips(tc).length))){ tcs.forEach(tc=>block(tc)); continue; }
             const cells=[...tr.childNodes].filter(x=>x.localName==='tc').map(tc=>[...tc.childNodes].filter(p=>p.localName==='p').map(runText).filter(Boolean).join(' / '));
             const line=cells.filter((x,i)=>x&&x!==cells[i-1]).join(' | '); if(line) items.push({k:'row',text:line}); } }
         else if(c.childNodes&&c.childNodes.length&&ln!=='rPr'&&ln!=='pPr') block(c); } };
@@ -1842,6 +1845,7 @@ function wordHeader(items){
   const res={};
   const put=(k,v)=>{ v=cleanVal(v); if(!v||k==='_skip'||res[k]||v.length>150||labelOf(v)) return;
     if(k==='fdl') v=v.split('·')[0].trim();
+    if(k==='fdl' && /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(v)) return; // solo la data, nessun numero FDL
     if(k==='type'){ const low=v.toLowerCase(); const t=TYPES.find(x=>x.toLowerCase()===low)||typeFromText(low); if(!t) return; v=t; }
     res[k]=v; };
   for(const it of items){ if(it.k==='img') continue;
@@ -1862,9 +1866,13 @@ function typeFromText(low){
 }
 // giornate: riga con la data (es. "28/10/2026 (viaggio) [10h30]"), poi il testo, poi le foto con le didascalie
 const DAY_RE=/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b\s*(\((viaggio|travel|lavoro)\))?\s*(\[\s*(\d+(?:[.,]\d+)?)\s*h\s*(\d{1,2})?\s*\])?\s*[:\-–]?\s*([\s\S]*)$/i;
+const RANGE_RE=/^(\d{1,2})\s*[-–]\s*(\d{1,2})[\/.](\d{1,2})[\/.](\d{2}|\d{4})\b\s*[:\-–]?\s*([\s\S]*)$/;
 const END_RE=/^(training suggestions|intervention cons?l?usion|conclusion|conclusione|only for softwarists)/i;
+// sezioni di chiusura scritte nel report: finiscono nella conclusione, non nell'ultima giornata
+const TAIL_RE=/^(problematiche|problemi riscontrati|criticit|formati provati|riepilogo|osservazioni|note finali|considerazioni|a disposizione per)/i;
 function wordDays(items){
-  const days=[]; let cur=null, started=false;
+  const days=[]; let cur=null, started=false, tail=null;
+  days.tail=[];
   const hasMarker=items.some(i=>/^(intervention report|descrizione attivit)/i.test(i.text||''));
   for(const it of items){
     if(!started){ if(!hasMarker||/^(intervention report|descrizione attivit)/i.test(it.text||'')){ started=true; if(hasMarker) continue; } else continue; }
@@ -1872,6 +1880,17 @@ function wordDays(items){
     if(it.k==='row' && !cur) continue;
     const t=it.text.trim();
     if(END_RE.test(t)) break;
+    if(tail){ days.tail.push(t); continue; }
+    if(cur && TAIL_RE.test(t)){ tail=true; days.tail.push(t); continue; }
+    const rg=t.length<400 && t.match(RANGE_RE);
+    if(rg){ let y=rg[4]; if(y.length===2) y='20'+y; const mo=+rg[3], d1=+rg[1], d2=+rg[2];
+      if(mo>=1&&mo<=12&&d1>=1&&d2<=31&&d2>=d1){
+        const iso=dd=>`${y}-${String(mo).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+        // "29/10" seguito da "29-30/10": la prima riga vuota è la stessa giornata
+        if(cur&&cur.date===iso(d1)&&!cur.notes.length&&!cur.imgs.length) days.pop();
+        cur={ date:iso(d1), type:'lavoro', hours:null, notes:[], caps:[], imgs:[], until:iso(d2) };
+        if(rg[5]&&rg[5].trim()) cur.notes.push(rg[5].trim());
+        days.push(cur); continue; } }
     const m=t.length<400 && t.match(DAY_RE);
     if(m){ let y=m[3]; if(y.length===2) y='20'+y;
       const mo=+m[2], da=+m[1];
@@ -1882,7 +1901,8 @@ function wordDays(items){
         if(m[9]&&m[9].trim()) cur.notes.push(m[9].trim());
         days.push(cur); continue; } }
     if(!cur || t==='—' || t==='-') continue;
-    (cur.imgs.length? cur.caps : cur.notes).push(t);
+    // dopo le foto: frase breve = didascalia (come nei report dell'app), testo lungo = continua il lavoro del giorno
+    if(cur.imgs.length && t.length<=80 && cur.caps.length<cur.imgs.length) cur.caps.push(t); else cur.notes.push(t);
   }
   return days;
 }
@@ -1953,7 +1973,12 @@ function importWord(){
         const d=mkDay(x.date,x.type,x.hours,x.notes.join('\n'));
         for(let j=0;j<x.imgs.length;j++){ busy(`Recupero le foto… (${nPh+1})`);
           const p=await photoFromZip(doc.zip,x.imgs[j]); if(p){ p.caption=x.caps[j]||''; d.photos.push(p); nPh++; } }
-        r.days.push(d); }
+        r.days.push(d);
+        if(x.until){ let dt=new Date(x.date+'T12:00:00Z'); const end=new Date(x.until+'T12:00:00Z');
+          const lab=fmtDateShort(x.date);
+          for(dt.setUTCDate(dt.getUTCDate()+1); dt<=end; dt.setUTCDate(dt.getUTCDate()+1))
+            r.days.push(mkDay(dt.toISOString().slice(0,10),'lavoro',x.hours,'Prosecuzione delle attività del '+lab+'.')); } }
+      if(!r.conclusion && pd.tail && pd.tail.length) r.conclusion=pd.tail.join('\n');
     } else if(ai&&Array.isArray(ai.days)){
       ai.days.forEach(x=>{ if(!x||!/^\d{4}-\d{2}-\d{2}$/.test(x.date||'')) return;
         const hrs=(x.hours!=null&&x.hours!=='')?num(x.hours,NaN):null;
