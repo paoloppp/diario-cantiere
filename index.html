@@ -142,6 +142,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
   background:#fff;color:var(--accent);font-weight:700;font-size:1rem;padding:14px;min-height:48px;
   display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .btn-hero:hover{filter:brightness(.98)}
+.btn-hero.btn-word{margin-top:10px;background:rgba(255,255,255,.18);color:#fff;box-shadow:none;border:1px solid rgba(255,255,255,.45)}
+.toast.busy{opacity:1}
 .eyebrow{text-transform:uppercase;letter-spacing:.08em;font-size:.7rem;font-weight:700;color:var(--accent)}
 .sec-head{display:flex;align-items:center;gap:10px;margin:22px 2px 12px}
 .sec-head h2{font-size:1.15rem;flex:1}
@@ -513,6 +515,7 @@ document.addEventListener('click', function(e){
   const a = t.dataset.act;
   try{
     if(a==='new') newReport();
+    else if(a==='word') importWord();
   }catch(err){
     try{ toast('Errore: '+(err && err.message || err)); }catch(_){}
     try{ alert('Errore creando il cantiere:\n'+(err && err.message || err)); }catch(_){}
@@ -555,8 +558,9 @@ function renderHome(){
         <h2>Benvenuto, Paolo</h2>
         <p>Ogni giorno annoti il lavoro svolto (scritto o dettato), scatti le foto e segni le ore. Alla fine generi il report completo da copiare in Word.</p>
         <button class="btn-hero" id="newBtn" data-act="new">${I.plus} Crea il primo cantiere</button>
+        <button class="btn-hero btn-word" data-act="word">${I.doc} Crea da file Word</button>
       </div>
-      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 3</div>`;
+      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 4</div>`;
     document.getElementById('impBtn').onclick=importBackup;
     return;
   }
@@ -586,10 +590,11 @@ function renderHome(){
         <p>${WS.reports.length} ${WS.reports.length===1?'cantiere':'cantieri'} · appunti, foto e ore sempre con te</p>
       </div>
       <button class="btn-hero" id="newBtnTop" data-act="new">${I.plus} Nuovo cantiere</button>
+      <button class="btn-hero btn-word" data-act="word">${I.doc} Crea da file Word</button>
     </div>
     <div class="swipe-hint">Scorri un cantiere verso sinistra per modifica, duplica, Word ed elimina</div>
     ${cards}
-    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 3</div>
+    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 4</div>
     <button class="fab" id="newBtn" data-act="new">${I.plus} Cantiere</button>`;
   setupSwipe();
   document.getElementById('expBtn').onclick=exportBackup;
@@ -1780,6 +1785,119 @@ function importBackup(){
       if(i>=0) WS.reports[i]=r; else WS.reports.push(r);
     }
     scheduleSave(); go('home'); toast('Import completato: '+n+(n===1?' cantiere':' cantieri'));
+  };
+  inp.click();
+}
+
+/* ---------- crea cantiere da file Word (.docx) ---------- */
+function busy(msg){ const t=document.getElementById('toast'); clearTimeout(t._t);
+  if(msg){ t.textContent=msg; t.classList.add('show','busy'); } else t.classList.remove('show','busy'); }
+// estrae il testo del .docx: paragrafi su righe, celle di tabella separate da " | "
+async function docxText(file){
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const names=Object.keys(zip.files).filter(n=>/^word\/(header\d*|document|footer\d*)\.xml$/.test(n))
+    .sort((a,b)=>(a.includes('document')?1:0)-(b.includes('document')?1:0));
+  const out=[];
+  const runText=el=>{ let s=''; const walk=n=>{ for(const c of n.childNodes){ const ln=c.localName;
+      if(ln==='t') s+=c.textContent; else if(ln==='tab') s+='\t'; else if(ln==='br'||ln==='cr') s+='\n';
+      else if(c.childNodes&&c.childNodes.length) walk(c); } }; walk(el); return s.trim(); };
+  const block=n=>{ for(const c of n.childNodes){ const ln=c.localName;
+      if(ln==='p'){ const t=runText(c); if(t) out.push(t); }
+      else if(ln==='tbl'){ for(const tr of c.childNodes){ if(tr.localName!=='tr') continue;
+          const cells=[...tr.childNodes].filter(x=>x.localName==='tc').map(tc=>[...tc.childNodes].filter(p=>p.localName==='p').map(runText).filter(Boolean).join(' / '));
+          const line=cells.filter(Boolean).join(' | '); if(line) out.push(line); } }
+      else if(c.childNodes&&c.childNodes.length&&ln!=='rPr'&&ln!=='pPr') block(c); } };
+  for(const n of names){ const xml=new DOMParser().parseFromString(await zip.file(n).async('string'),'application/xml'); block(xml.documentElement); }
+  return out.join('\n');
+}
+// lettura "a regole" (funziona anche offline): cerca le etichette tipiche "Etichetta: valore" o "Etichetta | valore"
+const WORD_LABELS={
+  customer:['ragione sociale','cliente','customer','client','destinatario'],
+  machine:['modello macchina','modello','tipo macchina','macchina','machine model','model','machine'],
+  serial:['serial no','serial number','serial','s/n','n° serie','n. serie','numero di serie','numero serie'],
+  matricola:['matricola'],
+  address:['località','localita','luogo intervento','luogo','indirizzo','sede','città','citta','address','location'],
+  fdl:['n° fdl','fdl','n° rapporto','rapporto n','numero rapporto'],
+  customerContact:['referente cliente','referente','persona di contatto','contatto','contact person','contact'],
+  fseResp:['fse resp','fse'],
+  technician:['tecnico','technician']
+};
+function wordHeuristic(text){
+  const res={}, lines=text.split('\n');
+  const norm=s=>s.toLowerCase().replace(/[.:]+$/,'').trim();
+  for(const line of lines){
+    const parts=line.split(/\s*\|\s*|\t+/);
+    // "Etichetta: valore" dentro una riga o una cella
+    for(const p of parts){ const m=p.match(/^\s*([^:]{2,40}?)\s*:\s*(.+)$/); if(m) setLab(m[1],m[2]); }
+    // tabella: "Etichetta | valore | Etichetta | valore"
+    for(let i=0;i<parts.length-1;i++) setLab(parts[i],parts[i+1]);
+  }
+  function setLab(lab,val){ lab=norm(lab); val=String(val||'').trim(); if(!val||val.length>150) return;
+    for(const k in WORD_LABELS){ if(res[k]) continue;
+      if(WORD_LABELS[k].some(w=>lab===w||lab.startsWith(w+' ')||lab.endsWith(' '+w))){ if(WORD_LABELS[k].some(w=>norm(val)===w)) return; res[k]=val; return; } } }
+  const low=text.toLowerCase();
+  if(/garanzia|warranty/.test(low)) res.type='In garanzia';
+  else if(/start.?up|collaudo|avviamento|commissioning/.test(low)) res.type='Start-up / Collaudo';
+  else if(/riparazion|manutenzion|repair|maintenance/.test(low)) res.type='Riparazione / Manutenzione';
+  return res;
+}
+const HM=v=>/^\d{1,2}:\d{2}$/.test(String(v||''))?String(v).padStart(5,'0'):'';
+async function wordAI(text){
+  const prompt=`Sei l'assistente di un tecnico che installa macchine etichettatrici. Qui sotto c'è il testo di un documento Word (ordine, conferma d'ordine, richiesta d'intervento o rapportino).
+Estrai i dati per creare il cantiere. Usa SOLO informazioni presenti nel testo; se un dato manca metti "".
+Rispondi SOLO con JSON:
+{"customer":"nome cliente/azienda","machine":"modello macchina","serial":"serial number","matricola":"matricola","address":"città, paese del cantiere",
+"type":"uno tra: Start-up / Collaudo | Riparazione / Manutenzione | In garanzia | Assistenza","technician":"","fdl":"n° FDL o rapporto","customerContact":"referente del cliente","fseResp":"",
+"days":[{"date":"YYYY-MM-DD","type":"lavoro o viaggio","amStart":"HH:MM","amEnd":"HH:MM","pmStart":"HH:MM","pmEnd":"HH:MM","fromPlace":"","toPlace":"","notes":"lavoro svolto quel giorno, testo completo"}]}
+"days" va compilato SOLO se il documento descrive giornate già svolte con data; altrimenti [].
+
+TESTO DEL DOCUMENTO:
+"""
+${text.slice(0,14000)}
+"""`;
+  return await sjson(prompt);
+}
+function importWord(){
+  let inp=document.getElementById('wordInput');
+  if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.id='wordInput';
+    inp.accept='.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    inp.style.cssText='position:fixed;left:-9999px;opacity:0;width:1px;height:1px'; document.body.appendChild(inp); }
+  inp.value='';
+  inp.onchange=async()=>{
+    const f=inp.files&&inp.files[0]; if(!f){ toast('Nessun file scelto'); return; }
+    if(/\.doc$/i.test(f.name)){ toast('Formato .doc vecchio: salvalo come .docx e riprova'); return; }
+    if(typeof JSZip==='undefined'){ toast('Componente Word non pronto, riprova tra un attimo'); return; }
+    busy('Leggo il documento…');
+    let text='';
+    try{ text=await docxText(f); }catch(e){ busy(); toast('Non riesco ad aprire questo file Word'); return; }
+    if(!text.trim()){ busy(); toast('Il documento sembra vuoto'); return; }
+    const h=wordHeuristic(text);
+    let ai=null, aiNote='';
+    if(CAP.sample && navigator.onLine!==false){
+      busy('Claude analizza il documento…');
+      try{ ai=await wordAI(text); }catch(e){ aiNote=' (analisi Claude non riuscita, uso la lettura base)'; }
+    }
+    busy();
+    const pick=k=>{ const a=ai&&typeof ai[k]==='string'?ai[k].trim():''; return a||h[k]||''; };
+    const TYPES=['Start-up / Collaudo','Riparazione / Manutenzione','In garanzia','Assistenza'];
+    const ty=pick('type');
+    const r={ id:uid(), customer:pick('customer'), machine:pick('machine'), serial:pick('serial'), matricola:pick('matricola'),
+      address:pick('address'), type:TYPES.includes(ty)?ty:'Start-up / Collaudo', technician:pick('technician')||'Mottola Paolo',
+      fdl:pick('fdl'), customerContact:pick('customerContact'), fseResp:pick('fseResp'), conclusion:'',
+      createdAt:new Date().toISOString(), days:[], sourceFile:f.name };
+    if(!r.customer) r.customer=f.name.replace(/\.docx$/i,'');
+    if(ai&&Array.isArray(ai.days)) ai.days.forEach(x=>{
+      if(!x||!/^\d{4}-\d{2}-\d{2}$/.test(x.date||'')) return;
+      const via=x.type==='viaggio';
+      r.days.push({ id:uid(), date:x.date, type:via?'viaggio':'lavoro',
+        amStart:HM(x.amStart)||(via?'':'08:00'), amEnd:HM(x.amEnd)||(via?'':'13:00'),
+        pmStart:HM(x.pmStart)||(via?'':'13:30'), pmEnd:HM(x.pmEnd)||(via?'':'18:00'),
+        travelHours:'', fromPlace:x.fromPlace||'', toPlace:x.toPlace||'', notes:String(x.notes||''), photos:[] });
+    });
+    WS.reports.push(r); scheduleSave();
+    const found=['customer','machine','serial','matricola','address','fdl','customerContact'].filter(k=>r[k]&&!(k==='customer'&&r.customer===f.name.replace(/\.docx$/i,''))).length;
+    go('header',{reportId:r.id});
+    toast(`Cantiere creato: ${found} dati trovati${r.days.length?', '+r.days.length+' giornate':''} — controlla`+aiNote);
   };
   inp.click();
 }
