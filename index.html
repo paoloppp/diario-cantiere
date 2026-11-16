@@ -492,7 +492,7 @@ function reportTotals(r){ let work=0,travel=0,days=0; r.days.forEach(d=>{ if(d.t
 function dateRange(r){ const ds=r.days.map(d=>d.date).filter(Boolean).sort(); if(!ds.length) return '—';
   return ds[0]===ds[ds.length-1]? fmtDateShort(ds[0]) : fmtDateShort(ds[0])+' – '+fmtDateShort(ds[ds.length-1]); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function assetURL(id){ return urlCache[id] || ('/_blob/'+id); }
+function assetURL(id){ if(!id) return ''; return urlCache[id] || ('/_blob/'+id); }
 
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
@@ -560,7 +560,7 @@ function renderHome(){
         <button class="btn-hero" id="newBtn" data-act="new">${I.plus} Crea il primo cantiere</button>
         <button class="btn-hero btn-word" data-act="word">${I.doc} Crea da file Word</button>
       </div>
-      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 6</div>`;
+      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 7</div>`;
     document.getElementById('impBtn').onclick=importBackup;
     return;
   }
@@ -594,7 +594,7 @@ function renderHome(){
     </div>
     <div class="swipe-hint">Scorri un cantiere verso sinistra per modifica, duplica, Word ed elimina</div>
     ${cards}
-    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 6</div>
+    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 7</div>
     <button class="fab" id="newBtn" data-act="new">${I.plus} Cantiere</button>`;
   setupSwipe();
   document.getElementById('expBtn').onclick=exportBackup;
