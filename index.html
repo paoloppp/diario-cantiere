@@ -1835,7 +1835,7 @@ const WORD_LABELS=[
 ].sort((a,b)=>b[1].length-a[1].length);
 const TYPES=['Start-up / Collaudo','Riparazione / Manutenzione','In garanzia','Assistenza'];
 function labelOf(s){ const low=String(s).toLowerCase().trim();
-  for(const [k,w] of WORD_LABELS){ if(low.startsWith(w)){ const nx=low.charAt(w.length); if(!nx||!/[a-zà-ù0-9]/.test(nx)) return {k, rest:String(s).trim().slice(w.length)}; } }
+  for(const [k,w] of WORD_LABELS){ if(low.startsWith(w)){ const nx=low.charAt(w.length); if(!nx||/[\s:.\/]/.test(nx)) return {k, rest:String(s).trim().slice(w.length)}; } }
   return null; }
 const cleanVal=v=>String(v||'').replace(/^[\s:.\/|·-]+/,'').replace(/[\s\/|]+$/,'').trim();
 function wordHeader(items){
