@@ -487,8 +487,17 @@ function travelSpan(d){
 }
 function nowHM(){ const n=new Date(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
 function fmtLunch(m){ m=Number(m)||60; return m<60? m+' min' : fmtH(m/60); }
+/* trasferimento hotel ↔ cantiere nelle giornate di lavoro: conta come ore viaggio.
+   Accetta 1,5 · 1.5 · 1:30 · 1h30 · 90' (minuti) */
+function parseDur(v){ const s=String(v==null?'':v).trim().toLowerCase().replace(/\s+/g,''); if(!s) return 0;
+  let m=s.match(/^(\d+)[:h](\d{1,2})?m?$/); if(m) return Number(m[1])+(Number(m[2]||0))/60;
+  m=s.match(/^(\d+)(?:'|min|m)$/); if(m) return Number(m[1])/60;
+  const n=parseFloat(s.replace(',','.')); return isNaN(n)?0:Math.max(0,n); }
+function commuteH(d){ return d && d.type!=='viaggio' ? parseDur(d.commuteOut)+parseDur(d.commuteBack) : 0; }
+function commuteTxt(d){ const a=parseDur(d.commuteOut), b=parseDur(d.commuteBack); if(!a&&!b) return '';
+  return 'Trasferimento hotel–cantiere: andata '+fmtH(a)+', ritorno '+fmtH(b); }
 function fmtH(h){ if(!h) return '0h'; const H=Math.floor(h),M=Math.round((h-H)*60); return M?`${H}h${String(M).padStart(2,'0')}`:`${H}h`; }
-function reportTotals(r){ let work=0,travel=0,days=0; r.days.forEach(d=>{ if(d.type==='viaggio') travel+=dayHours(d); else {work+=dayHours(d); days++;} }); return {work,travel,days}; }
+function reportTotals(r){ let work=0,travel=0,days=0; r.days.forEach(d=>{ if(d.type==='viaggio') travel+=dayHours(d); else {work+=dayHours(d); travel+=commuteH(d); days++;} }); return {work,travel,days}; }
 function dateRange(r){ const ds=r.days.map(d=>d.date).filter(Boolean).sort(); if(!ds.length) return '—';
   return ds[0]===ds[ds.length-1]? fmtDateShort(ds[0]) : fmtDateShort(ds[0])+' – '+fmtDateShort(ds[ds.length-1]); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -560,7 +569,7 @@ function renderHome(){
         <button class="btn-hero" id="newBtn" data-act="new">${I.plus} Crea il primo cantiere</button>
         <button class="btn-hero btn-word" data-act="word">${I.doc} Crea da file Word</button>
       </div>
-      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 7</div>`;
+      <div class="backup-row"><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 8</div>`;
     document.getElementById('impBtn').onclick=importBackup;
     return;
   }
@@ -594,7 +603,7 @@ function renderHome(){
     </div>
     <div class="swipe-hint">Scorri un cantiere verso sinistra per modifica, duplica, Word ed elimina</div>
     ${cards}
-    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 7</div>
+    <div class="backup-row"><button class="btn sm ghost" id="expBtn">Esporta backup</button><button class="btn sm ghost" id="impBtn">Importa backup</button></div><div class="app-ver">versione app 8</div>
     <button class="fab" id="newBtn" data-act="new">${I.plus} Cantiere</button>`;
   setupSwipe();
   document.getElementById('expBtn').onclick=exportBackup;
@@ -694,7 +703,7 @@ function renderReport(r){
         <span class="d-hrs num">${fmtH(h)}</span>
       </div>
       ${d.notes?`<div class="d-note">${esc(d.notes)}</div>`:'<div class="d-note muted" style="font-style:italic">Nessun appunto…</div>'}
-      <div class="d-foot"><span>${np?`${np} foto`:'—'}</span>${d.type==='viaggio'&&(d.fromPlace||d.toPlace)?`<span>${esc(d.fromPlace||'?')} → ${esc(d.toPlace||'?')}</span>`:''}</div>
+      <div class="d-foot"><span>${np?`${np} foto`:'—'}</span>${commuteH(d)?`<span>+${fmtH(commuteH(d))} trasferimento</span>`:''}${d.type==='viaggio'&&(d.fromPlace||d.toPlace)?`<span>${esc(d.fromPlace||'?')} → ${esc(d.toPlace||'?')}</span>`:''}</div>
     </button>`;
   }).join('') || `<div class="empty" style="padding:28px"><p>Ancora nessuna giornata. Aggiungi la prima.</p></div>`;
 
@@ -909,11 +918,20 @@ function renderDay(r,d){
           <label class="fld" style="margin:0"><span class="lab">Dalle</span><input type="time" class="inp" id="pm1" value="${d.pmStart||''}"></label>
           <label class="fld" style="margin:0"><span class="lab">Alle</span><input type="time" class="inp" id="pm2" value="${d.pmEnd||''}"></label>
         </div></details>
-        <div class="hreadout"><span class="lbl">Totale giornata</span><span class="num" id="hOut">${hoursLabel()}</span></div>`;
+        <div class="hreadout"><span class="lbl">Totale giornata</span><span class="num" id="hOut">${hoursLabel()}</span></div>
+        <span class="lab" style="display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:5px">Trasferimento hotel ↔ cantiere (conta come ore viaggio)</span>
+        <div class="grid-t" style="margin-bottom:12px">
+          <label class="fld" style="margin:0"><span class="lab">Andata</span><input class="inp" id="cOut" inputmode="decimal" placeholder="es. 1:15" value="${esc(d.commuteOut||'')}"></label>
+          <label class="fld" style="margin:0"><span class="lab">Ritorno</span><input class="inp" id="cBack" inputmode="decimal" placeholder="es. 1:30" value="${esc(d.commuteBack||'')}"></label>
+        </div>
+        <div class="hreadout" id="cRead" style="background:var(--amber-soft);color:var(--amber-ink)" ${commuteH(d)?'':'hidden'}><span class="lbl">Viaggio trasferimento</span><span class="num" id="cOutH">${fmtH(commuteH(d))}</span></div>`;
       const upd=()=>{ d.amStart=hours.querySelector('#am1').value; d.amEnd=hours.querySelector('#am2').value;
         d.pmStart=hours.querySelector('#pm1').value; d.pmEnd=hours.querySelector('#pm2').value;
         hours.querySelector('#hOut').textContent=hoursLabel(); scheduleSave(); };
       ['am1','am2','pm1','pm2'].forEach(id=>hours.querySelector('#'+id).addEventListener('input',upd));
+      const updC=()=>{ d.commuteOut=hours.querySelector('#cOut').value; d.commuteBack=hours.querySelector('#cBack').value;
+        const c=commuteH(d); hours.querySelector('#cRead').hidden=!c; hours.querySelector('#cOutH').textContent=fmtH(c); scheduleSave(); };
+      ['cOut','cBack'].forEach(id=>hours.querySelector('#'+id).addEventListener('input',updC));
       hours.querySelector('#fWork').addEventListener('input',e=>{ d.workHours=e.target.value.replace(',','.'); hours.querySelector('#hOut').textContent=hoursLabel(); scheduleSave(); });
       wireCheck();
     }
@@ -1098,6 +1116,7 @@ function renderOutput(r){
   const dayHtml=days.map(d=>{
     const ph=(d.photos||[]).map(p=>`<figure><img src="${assetURL(p.assetId)||p.dataUrl||''}" alt="">${p.caption?`<figcaption>${esc(p.caption)}</figcaption>`:''}</figure>`).join('');
     return `<div class="r-day"><h3>${esc(fmtDate(d.date))} <span style="font-weight:600;color:var(--muted);font-size:.85rem">${d.type==='viaggio'?'· viaggio':''}</span><span class="h num">${fmtH(dayHours(d))}</span></h3>
+      ${commuteTxt(d)?`<p class="muted" style="margin-top:4px;font-size:.88rem">${esc(commuteTxt(d))}</p>`:''}
       ${d.notes?`<p>${esc(d.notes)}</p>`:'<p class="muted" style="font-style:italic">—</p>'}
       ${ph?`<div class="r-photos">${ph}</div>`:''}</div>`;
   }).join('');
@@ -1200,7 +1219,7 @@ async function detectZone(txt){
 function classifyDays(r){
   const by={};
   r.days.forEach(d=>{ if(!d.date) return; const o=by[d.date]=by[d.date]||{date:d.date,w:0,t:0};
-    if(d.type==='viaggio') o.t+=dayHours(d); else o.w+=dayHours(d); });
+    if(d.type==='viaggio') o.t+=dayHours(d); else { o.w+=dayHours(d); o.t+=commuteH(d); } });
   const rows=Object.values(by).sort((a,b)=>a.date<b.date?-1:1);
   const T={ord:0,h25:0,h30:0,h50:0,h55:0,tOut:0,tIn:0,days:rows.length,fest:0};
   rows.forEach(o=>{
@@ -1388,6 +1407,7 @@ function buildReportXML(r){
   let out='';
   days.forEach((d,idx)=>{
     out+=wPara(`${fmtDateShort(d.date)}${d.type==='viaggio'?' (viaggio)':''}   [${fmtH(dayHours(d))}]`, true);
+    if(commuteTxt(d)) out+=wPara(commuteTxt(d), false);
     out+=wPara(d.notes||'—', false);
     // foto ordinate in tabella invisibile a 2 colonne, con didascalia sotto ciascuna
     const imgs=[];
@@ -1671,6 +1691,7 @@ function reportPlainText(r){
   L.push(''); L.push('DESCRIZIONE ATTIVITÀ'); L.push('');
   r.days.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(d=>{
     L.push(`— ${fmtDateShort(d.date)} ${d.type==='viaggio'?'(viaggio) ':''}[${fmtH(dayHours(d))}]`);
+    if(commuteTxt(d)) L.push(commuteTxt(d));
     if(d.notes) L.push(d.notes);
     if((d.photos||[]).some(p=>p.caption)) L.push('Foto: '+d.photos.filter(p=>p.caption).map(p=>p.caption).join('; '));
     L.push('');

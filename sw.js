@@ -1,5 +1,5 @@
 // Diario Cantiere — funzionamento offline
-const CACHE='diario-v7';
+const CACHE='diario-v8';
 const SHELL=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'];
 self.addEventListener('install',e=>{
