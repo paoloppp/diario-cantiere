@@ -2720,13 +2720,16 @@ function fdlPlan(r){
   const out=[],ret=[],wk=[];
   days.forEach(d=>{
     if(d.type==='viaggio'){ (firstWork && d.date>firstWork ? ret : out).push(...fdlTravelRows(d)); }
-    else { const w=fdlWorkRow(d); if(w) wk.push(w);
-      // trasferimento hotel ↔ cantiere: andata nel riquadro "Outward journey", ritorno in "Return trip"
-      const co=parseDur(d.commuteOut), cb=parseDur(d.commuteBack);
-      // orari: andata = (arrivo in cantiere − durata) → arrivo; ritorno = uscita → (uscita + durata)
-      const arr=hm2d(d.checkIn||d.amStart||d.pmStart), dep=hm2d(d.checkOut||d.pmEnd||d.amEnd);
-      if(co) out.push(arr!=null && arr-co/24>=0 ? {date:d.date, a:arr-co/24, b:arr, extra:0} : {date:d.date, a:null, b:null, extra:co/24});
-      if(cb) ret.push(dep!=null && dep+cb/24<1 ? {date:d.date, a:dep, b:dep+cb/24, extra:0} : {date:d.date, a:null, b:null, extra:cb/24}); }
+    else { const w=fdlWorkRow(d);
+      // trasferimento hotel ↔ cantiere: l'orario di inizio è la partenza dall'hotel e quello di fine l'arrivo in hotel.
+      // Andata = inizio → inizio+durata, ritorno = fine−durata → fine; il lavoro dal cliente sta in mezzo.
+      const co=parseDur(d.commuteOut)/24, cb=parseDur(d.commuteBack)/24;
+      if(w && co){ if(w.a!=null){ out.push({date:d.date, a:w.a, b:w.a+co, extra:0}); w.a+=co; }
+                   else { out.push({date:d.date, a:null, b:null, extra:co}); w.extra-=co; } }
+      if(w && cb){ const k=w.e!=null?'e':(w.b!=null?'b':null);
+                   if(k){ ret.push({date:d.date, a:w[k]-cb, b:w[k], extra:0}); w[k]-=cb; }
+                   else { ret.push({date:d.date, a:null, b:null, extra:cb}); w.extra-=cb; } }
+      if(w) wk.push(w); }
   });
   return {out,ret,wk};
 }
