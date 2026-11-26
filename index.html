@@ -2724,6 +2724,10 @@ function fdlPlan(r){
       // trasferimento hotel ↔ cantiere: l'orario di inizio è la partenza dall'hotel e quello di fine l'arrivo in hotel.
       // Andata = inizio → inizio+durata, ritorno = fine−durata → fine; il lavoro dal cliente sta in mezzo.
       const co=parseDur(d.commuteOut)/24, cb=parseDur(d.commuteBack)/24;
+      // giornata con check-in/out e pausa: la divido in mattina e pomeriggio (pausa dalla fine mattina, di default 13:00)
+      if(w && d.checkIn && d.lunch && w.a!=null && w.b!=null && w.c==null){
+        const L=hm2d(d.amEnd)!=null?hm2d(d.amEnd):13/24, Ld=(Number(d.lunchMin)||60)/1440;
+        if(w.a+co < L && L+Ld < w.b-cb){ w.c=L+Ld; w.e=w.b; w.b=L; w.extra=0; } }
       if(w && co){ if(w.a!=null){ out.push({date:d.date, a:w.a, b:w.a+co, extra:0}); w.a+=co; }
                    else { out.push({date:d.date, a:null, b:null, extra:co}); w.extra-=co; } }
       if(w && cb){ const k=w.e!=null?'e':(w.b!=null?'b':null);
