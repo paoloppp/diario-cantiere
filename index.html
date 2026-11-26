@@ -2723,8 +2723,10 @@ function fdlPlan(r){
     else { const w=fdlWorkRow(d); if(w) wk.push(w);
       // trasferimento hotel ↔ cantiere: andata nel riquadro "Outward journey", ritorno in "Return trip"
       const co=parseDur(d.commuteOut), cb=parseDur(d.commuteBack);
-      if(co) out.push({date:d.date, a:null, b:null, extra:co/24});
-      if(cb) ret.push({date:d.date, a:null, b:null, extra:cb/24}); }
+      // orari: andata = (arrivo in cantiere − durata) → arrivo; ritorno = uscita → (uscita + durata)
+      const arr=hm2d(d.checkIn||d.amStart||d.pmStart), dep=hm2d(d.checkOut||d.pmEnd||d.amEnd);
+      if(co) out.push(arr!=null && arr-co/24>=0 ? {date:d.date, a:arr-co/24, b:arr, extra:0} : {date:d.date, a:null, b:null, extra:co/24});
+      if(cb) ret.push(dep!=null && dep+cb/24<1 ? {date:d.date, a:dep, b:dep+cb/24, extra:0} : {date:d.date, a:null, b:null, extra:cb/24}); }
   });
   return {out,ret,wk};
 }
