@@ -2699,6 +2699,9 @@ function fdlTravelRows(d){
       const end=(start+seg)/24;   // mezzanotte: scrivo 23:59 (+1 min nella formula) invece di un 0:00 che confonde
       rows.push(end>=0.99999? {date, a:start/24, b:1439/1440, extra:1/1440} : {date, a:start/24, b:end, extra:0});
       left-=seg; start=0; date=isoAdd(date,1);
+      // fuso orario: dopo la prima mezzanotte (ora di partenza) proseguo con l'ora locale di arrivo
+      if(rows.length===1){ const sh=Number(d.tzShift||0);
+        if(sh){ start=-sh; if(start<0){ start+=24; date=isoAdd(date,-1); } else if(start>=24){ start-=24; date=isoAdd(date,1); } } }
     }
     return rows;
   }
