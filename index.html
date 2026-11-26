@@ -2693,15 +2693,20 @@ function isoAdd(iso,n){ const d=new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUT
 function fdlTravelRows(d){
   if(d.checkIn && d.checkOut){
     const span=travelSpan(d); if(span==null||span<=0) return [];
-    let start=hm2d(d.checkIn)*24, date=d.date, left=span; const rows=[];
-    // fuso orario: tutto il viaggio è scritto nell'ora locale del luogo di arrivo (partenza convertita)
+    // fuso orario: orari come vissuti (partenza in ora locale di partenza, arrivo in ora locale di arrivo);
+    // la differenza di fuso viene tolta dal totale e segnata in piccolo (es. "+4,5")
     const sh=Number(d.tzShift||0);
-    if(sh){ start-=sh; if(start>=24){ start-=24; date=isoAdd(date,1); } else if(start<0){ start+=24; date=isoAdd(date,-1); } }
+    let start=hm2d(d.checkIn)*24, date=d.date, left=span-sh; const rows=[];
     while(left>0.0001 && rows.length<4){
       const seg=Math.min(left, 24-start);
       const end=(start+seg)/24;   // mezzanotte: scrivo 23:59 (+1 min nella formula) invece di un 0:00 che confonde
       rows.push(end>=0.99999? {date, a:start/24, b:1439/1440, extra:1/1440} : {date, a:start/24, b:end, extra:0});
       left-=seg; start=0; date=isoAdd(date,1);
+    }
+    if(sh && rows.length){
+      const len=x=>((x.b-x.a)+(x.extra||0))*24;
+      const x=len(rows[rows.length-1])>=Math.abs(sh)?rows[rows.length-1]:rows[0];
+      x.extra=(x.extra||0)+sh/24; x.note=(sh<0?'+':'−')+String(Math.abs(sh)).replace('.',',');
     }
     return rows;
   }
@@ -2767,10 +2772,11 @@ async function downloadFdl(r, btn){
         const put=(col,v)=>{ xml=xlSetCell(xml,col+n, v==null?null:xlNum(v)); };
         put('C',x?iso2serial(x.date):null);
         put('D',x?x.a:null); put('E',x?x.b:null); put('F',x?x.c:null); put('G',x?x.e:null);
+        if(x&&x.note) xml=xlSetCell(xml,'F'+n,'<is><r><rPr><sz val="7"/><color rgb="FF666666"/></rPr><t>'+x.note+'</t></r></is>','inlineStr');
         let tot=0;
         if(x){ tot=((x.b??0)-(x.a??0)); if(x.b!=null&&x.a!=null&&tot<0) tot+=1; tot+=((x.e??0)-(x.c??0))+(x.extra||0); }
         const ex=x&&x.extra?(x.extra>0?'+':'')+(Math.round(x.extra*1440))+'/1440':'';
-        xml=xlSetCell(xml,totCol+n,`<f>(E${n}-D${n})+(G${n}-F${n})${ex}</f>`+xlNum(tot));
+        xml=xlSetCell(xml,totCol+n,(x&&x.note?`<f>(E${n}-D${n})${ex}</f>`:`<f>(E${n}-D${n})+(G${n}-F${n})${ex}</f>`)+xlNum(tot));
         if(totCol==='H') totW+=tot; else totT+=tot;
       }
     };
