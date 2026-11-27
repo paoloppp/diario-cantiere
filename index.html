@@ -1079,7 +1079,8 @@ function dayHours(d){
   if(d.checkIn){ if(!d.checkOut) return 0;
     let h=diffH(d.checkIn,d.checkOut);
     if(d.type==='viaggio'){ const t=travelSpan(d); if(t!=null) h=t; }
-    return Math.max(0, h - (d.lunch?(Number(d.lunchMin)||60)/60:0)); }
+    // giornata di lavoro: inizio = partenza dall'hotel, fine = arrivo in hotel → tolgo anche il trasferimento (contato come viaggio)
+    return Math.max(0, h - (d.lunch?(Number(d.lunchMin)||60)/60:0) - (d.type!=='viaggio'?commuteH(d):0)); }
   if(d.type==='viaggio'){ return Number(d.travelHours)||0; }
   if(d.workHours!=null&&String(d.workHours).trim()!=='') return num(d.workHours,0); // totale ore scritto a mano
   return diffH(d.amStart,d.amEnd)+diffH(d.pmStart,d.pmEnd); }
